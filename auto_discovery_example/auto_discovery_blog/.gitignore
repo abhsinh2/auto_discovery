@@ -1,0 +1,6 @@
+/target/
+/.settings/
+/.vertx/
+/.classpath
+/.project
+/auto_discovery_blog.iml
