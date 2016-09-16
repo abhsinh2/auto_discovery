@@ -15,6 +15,7 @@ public class Main extends AbstractVerticle {
     private static String deploymentID;
     private static int port = 0;
     private static String discoveryTypeStr;
+    private static boolean isCluster = false;
 
     // Convenience method so you can run it in your IDE
     public static void main(String[] args) {
@@ -23,9 +24,14 @@ public class Main extends AbstractVerticle {
         } else if (args.length == 2) {
             port = Integer.parseInt(args[0]);
             discoveryTypeStr =  args[1];
+        } else if (args.length == 3) {
+            port = Integer.parseInt(args[0]);
+            discoveryTypeStr =  args[1];
+            isCluster = Boolean.parseBoolean(args[2]);
         }
 
         DeploymentOptions deploymentOptions = new DeploymentOptions();
+        VertxOptions vertxOptions = new VertxOptions().setWorkerPoolSize(10);
 
         Consumer<Vertx> runner = vertx -> {
             try {
@@ -35,9 +41,19 @@ public class Main extends AbstractVerticle {
             }
         };
 
-        VertxOptions vertxOptions = new VertxOptions().setWorkerPoolSize(10);
-        Vertx vertx = Vertx.vertx(vertxOptions);
-        runner.accept(vertx);
+        if (isCluster) {
+            Vertx.clusteredVertx(vertxOptions, res -> {
+                if (res.succeeded()) {
+                    Vertx vertx = res.result();
+                    runner.accept(vertx);
+                } else {
+                    res.cause().printStackTrace();
+                }
+            });
+        } else {
+            Vertx vertx = Vertx.vertx(vertxOptions);
+            runner.accept(vertx);
+        }
     }
 
     @Override
@@ -45,7 +61,7 @@ public class Main extends AbstractVerticle {
         BlogApplication userverticle = new BlogApplication(port, discoveryTypeStr);
 
         vertx.deployVerticle(userverticle, result -> {
-            System.out.println("User Application deployed");
+            System.out.println("Blog Application deployed");
             deploymentID = result.result();
         });
 

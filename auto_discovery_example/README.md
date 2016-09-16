@@ -42,12 +42,12 @@ java -cp target/auto_discovery_blog-1.0.0-SNAPSHOT-fat.jar application.Main 9010
 
 **Start user service**
 
-vertx run src/main/java/application/Main.java -cp target/auto_discovery_user-1.0.0-SNAPSHOT-fat.jar -conf src/main/resources/conf1.conf
+java -cp target/auto_discovery_user-1.0.0-SNAPSHOT-fat.jar application.Main 9090 vertx true
 
 **Start another user service**
 
-vertx run src/main/java/application/Main.java -cp target/auto_discovery_user-1.0.0-SNAPSHOT-fat.jar -conf src/main/resources/conf2.conf
+java -cp target/auto_discovery_user-1.0.0-SNAPSHOT-fat.jar application.Main 9091 vertx true
 
 **Start blog service**
 
-vertx run src/main/java/application/Main.java -cp target/auto_discovery_blog-1.0.0-SNAPSHOT-fat.jar -conf src/main/resources/conf1.conf
+java -cp target/auto_discovery_blog-1.0.0-SNAPSHOT-fat.jar application.Main 9010 vertx true

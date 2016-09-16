@@ -128,8 +128,6 @@ public class BlogApplication extends AbstractVerticle {
     }
 
     private void initVertxServiceDiscovery() {
-        System.out.println("initVertxServiceDiscovery");
-
         //vertxServiceDiscovery = io.vertx.servicediscovery.ServiceDiscovery.create(vertx);
         vertxServiceDiscovery = io.vertx.servicediscovery.ServiceDiscovery.create(vertx,
                 new ServiceDiscoveryOptions().setAnnounceAddress(Util.vertx_discoveryAnnounceAddress)
@@ -139,7 +137,7 @@ public class BlogApplication extends AbstractVerticle {
             if (ar.succeeded()) {
                 Record record = ar.result();
                 if (record != null) {
-                    System.out.println("we have a record:" + record);
+                    System.out.println("we have a record:" + record.getLocation().getString(Util.vertx_discoveryServiceKey));
                 } else {
                     System.out.println("the lookup succeeded, but no matching service");
                 }
@@ -148,11 +146,12 @@ public class BlogApplication extends AbstractVerticle {
             }
         });
 
+
         vertxServiceDiscovery.getRecord((JsonObject) null, ar -> {
             if (ar.succeeded()) {
                 Record record = ar.result();
                 if (record != null) {
-                    System.out.println("we have a record:" + record);
+                    System.out.println("we have a record:" + record.getLocation().getString(Util.vertx_discoveryServiceKey));
                 } else {
                     System.out.println("the lookup succeeded, but no matching service");
                 }
@@ -167,7 +166,7 @@ public class BlogApplication extends AbstractVerticle {
             if (ar.succeeded()) {
                 Record record = ar.result();
                 if (record != null) {
-                    System.out.println("we have a record:" + record);
+                    System.out.println("we have a record:" + record.getLocation().getString(Util.vertx_discoveryServiceKey));
 
                     // Retrieve the service reference
                     ServiceReference reference = vertxServiceDiscovery.getReference(record);
@@ -176,8 +175,8 @@ public class BlogApplication extends AbstractVerticle {
                     HttpClient client = reference.get();
 
                     // You need to path the complete path
-                    client.getNow("/api/persons", response -> {
-                        System.out.println(response.statusCode());
+                    client.getNow("/services/users/abhi", response -> {
+                        System.out.println("Got Resonse Code:" + response.statusCode());
 
                         // Dont' forget to release the service
                         reference.release();
@@ -190,11 +189,12 @@ public class BlogApplication extends AbstractVerticle {
             }
         });
 
+
         vertxServiceDiscovery.getRecord(new JsonObject().put("name", Util.vertx_discoveryServiceName), ar -> {
             if (ar.succeeded()) {
                 Record record = ar.result();
                 if (record != null) {
-                    System.out.println("we have a record:" + record);
+                    System.out.println("we have a record:" + record.getLocation().getString(Util.vertx_discoveryServiceKey));
                 } else {
                     System.out.println("the lookup succeeded, but no matching service");
                 }
@@ -202,6 +202,7 @@ public class BlogApplication extends AbstractVerticle {
                 System.out.println("lookup failed");
             }
         });
+
 
         // Get all records matching the filter
         vertxServiceDiscovery.getRecords(r -> "some-value".equals(r.getMetadata().getString("some-label")), ar -> {
@@ -232,11 +233,13 @@ public class BlogApplication extends AbstractVerticle {
     }
 
     private void startHttpServer() {
+        System.out.println("Starting Server ");
         HttpServer server = vertx.createHttpServer();
         Router router = Router.router(vertx);
 
         initializeRESTServices(router);
 
+        System.out.println("Listening to " + port);
         server.requestHandler(router::accept).listen(port);
     }
 

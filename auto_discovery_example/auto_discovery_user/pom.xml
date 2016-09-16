@@ -15,7 +15,7 @@
         <dependency>
             <groupId>com.abhsinh2</groupId>
             <artifactId>auto_discovery_common</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
+            <version>${project.version}</version>
         </dependency>
     </dependencies>
 
@@ -60,7 +60,7 @@
                                 <transformer
                                         implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <manifestEntries>
-                                        <Main-Class>com.cisco.cmad.blog.StartUp</Main-Class>
+                                        <Main-Class>application.Main</Main-Class>
                                     </manifestEntries>
                                 </transformer>
                             </transformers>
