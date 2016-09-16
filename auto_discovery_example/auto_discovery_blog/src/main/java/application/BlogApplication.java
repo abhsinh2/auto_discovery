@@ -27,17 +27,26 @@ import org.apache.curator.x.discovery.details.JsonInstanceSerializer;
 import java.util.Collection;
 import java.util.List;
 
+/**
+ * abhsinh2
+ */
 public class BlogApplication extends AbstractVerticle {
 
-    private static int port = 0;
-    private static String discoveryTypeStr;
     private static DiscoveryTypeEnum discoveryType = DiscoveryTypeEnum.ZOOKEEPER;
 
+    // Zookeeper variables and constants
     private static final String ZK_HOST = "localhost:2181";
-
     private CuratorFramework curator;
     private ServiceDiscovery<InstanceDetails> zkDiscovery;
     private io.vertx.servicediscovery.ServiceDiscovery vertxServiceDiscovery;
+
+    private int port = 0;
+    private String discoveryTypeStr;
+
+    public BlogApplication(int port, String discoveryTypeStr) {
+        this.port = port;
+        this.discoveryTypeStr = discoveryTypeStr;
+    }
 
     @Override
     public void start(Future<Void> startFuture) throws Exception {
@@ -94,12 +103,12 @@ public class BlogApplication extends AbstractVerticle {
         JsonInstanceSerializer<InstanceDetails> serializer = new JsonInstanceSerializer<InstanceDetails>(
                 InstanceDetails.class);
 
-        this.zkDiscovery = ServiceDiscoveryBuilder.builder(InstanceDetails.class).client(this.curator).basePath("services")
+        this.zkDiscovery = ServiceDiscoveryBuilder.builder(InstanceDetails.class).client(this.curator).basePath(Util.zk_basePath)
                 .serializer(serializer).build();
     }
 
     private void retrieveUserServices() throws Exception {
-        final Collection<ServiceInstance<InstanceDetails>> services = zkDiscovery.queryForInstances("user");
+        final Collection<ServiceInstance<InstanceDetails>> services = zkDiscovery.queryForInstances(Util.zk_usernode);
         for (final ServiceInstance<InstanceDetails> service : services) {
             final String uri = service.buildUriSpec();
 
@@ -112,9 +121,9 @@ public class BlogApplication extends AbstractVerticle {
         Config config = new Config();
         // either have hazelcast.xml in classpath or pass config file using -Dhazelcast.config
         HazelcastInstance instance = Hazelcast.newHazelcastInstance(config);
-        com.hazelcast.core.MultiMap<String, String> multiMap = instance.getMultiMap("user");
+        com.hazelcast.core.MultiMap<String, String> multiMap = instance.getMultiMap(Util.hz_userMapName);
 
-        Collection<String> values = multiMap.get("service");
+        Collection<String> values = multiMap.get(Util.hz_userServiceKey);
         values.stream().forEach((it) -> System.out.println("User Instance: " + it));
     }
 
@@ -123,8 +132,8 @@ public class BlogApplication extends AbstractVerticle {
 
         //vertxServiceDiscovery = io.vertx.servicediscovery.ServiceDiscovery.create(vertx);
         vertxServiceDiscovery = io.vertx.servicediscovery.ServiceDiscovery.create(vertx,
-                new ServiceDiscoveryOptions().setAnnounceAddress("user-service-announce")
-                        .setName("user-name"));
+                new ServiceDiscoveryOptions().setAnnounceAddress(Util.vertx_discoveryAnnounceAddress)
+                        .setName(Util.vertx_discoveryName));
 
         vertxServiceDiscovery.getRecord(r -> true, ar -> {
             if (ar.succeeded()) {
@@ -154,7 +163,7 @@ public class BlogApplication extends AbstractVerticle {
 
 
         // Get a record by name
-        vertxServiceDiscovery.getRecord(r -> r.getName().equals("user-service"), ar -> {
+        vertxServiceDiscovery.getRecord(r -> r.getName().equals(Util.vertx_discoveryServiceName), ar -> {
             if (ar.succeeded()) {
                 Record record = ar.result();
                 if (record != null) {
@@ -181,7 +190,7 @@ public class BlogApplication extends AbstractVerticle {
             }
         });
 
-        vertxServiceDiscovery.getRecord(new JsonObject().put("name", "user-service"), ar -> {
+        vertxServiceDiscovery.getRecord(new JsonObject().put("name", Util.vertx_discoveryServiceName), ar -> {
             if (ar.succeeded()) {
                 Record record = ar.result();
                 if (record != null) {
@@ -207,7 +216,6 @@ public class BlogApplication extends AbstractVerticle {
                 System.out.println("lookup failed");
             }
         });
-
 
         vertxServiceDiscovery.getRecords(new JsonObject().put("some-label", "some-value"), ar -> {
             if (ar.succeeded()) {
@@ -267,25 +275,5 @@ public class BlogApplication extends AbstractVerticle {
         //CloseableUtils.closeQuietly(this.curator);
 
         stopFuture.complete();
-    }
-
-    public static void main(String[] args) {
-        if (args.length == 1) {
-            port = Integer.parseInt(args[0]);
-        } else if (args.length == 2) {
-            port = Integer.parseInt(args[0]);
-            discoveryTypeStr =  args[1];
-        }
-
-        VertxOptions options = new VertxOptions().setWorkerPoolSize(10);
-        Vertx vertx = Vertx.vertx(options);
-
-        BlogApplication blogverticle = new BlogApplication();
-        vertx.deployVerticle(blogverticle, new Handler<AsyncResult<String>>() {
-            @Override
-            public void handle(AsyncResult<String> result) {
-                System.out.println("Blog Application deployed");
-            }
-        });
     }
 }

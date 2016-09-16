@@ -14,7 +14,6 @@ import io.vertx.ext.web.handler.BodyHandler;
 import io.vertx.servicediscovery.Record;
 import io.vertx.servicediscovery.ServiceDiscoveryOptions;
 import io.vertx.servicediscovery.types.EventBusService;
-import io.vertx.servicediscovery.types.HttpEndpoint;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.retry.ExponentialBackoffRetry;
@@ -24,22 +23,40 @@ import org.apache.curator.x.discovery.ServiceInstance;
 import org.apache.curator.x.discovery.UriSpec;
 import org.apache.curator.x.discovery.details.JsonInstanceSerializer;
 
+/**
+ * abhsinh2
+ */
 public class UserApplication extends AbstractVerticle {
-	
-	private static int port = 0;
-    private static String discoveryTypeStr;
 
     private static DiscoveryTypeEnum discoveryType = DiscoveryTypeEnum.ZOOKEEPER;
 
     public static final String APPLICATION_PATH = "api";
     public static final String CONTEXT_PATH = "services";
     public static final String USER_SERVICE_PATH = "/user";
-    private static final String ZK_HOST = "localhost:2181";
+    private static String host = "127.0.0.1";
 
-    private CuratorFramework curator;
+    private UriSpec uriSpec;
+
+    // Zookeeper variables and constants
+    private static final String ZK_HOST = "localhost:2181";
+    private CuratorFramework zkCurator;
     private ServiceDiscovery<InstanceDetails> zkDiscovery;
+    private ServiceInstance<InstanceDetails> zkServiceInstance;
+
+    // Hazelcast variables and constants
+    private HazelcastInstance instance;
+
+    // Vertx variables and constants
     private io.vertx.servicediscovery.ServiceDiscovery vertxServiceDiscovery;
     private Record record;
+
+    private int port = 0;
+    private String discoveryTypeStr;
+
+    public UserApplication(int port, String discoveryTypeStr) {
+        this.port = port;
+        this.discoveryTypeStr = discoveryTypeStr;
+    }
 	
 	@Override
 	public void start(Future<Void> startFuture) throws Exception {
@@ -65,6 +82,7 @@ public class UserApplication extends AbstractVerticle {
         }
 
         discoveryType = Util.getDiscoveryEnum(discoveryTypeStr);
+        uriSpec = this.getUriSpec(USER_SERVICE_PATH);
 
         if (discoveryType == DiscoveryTypeEnum.ZOOKEEPER)
             initZKDiscovery();
@@ -80,7 +98,7 @@ public class UserApplication extends AbstractVerticle {
 
     private void initZKDiscovery() throws Exception {
         createCurator();
-        this.curator.start();
+        this.zkCurator.start();
 
         createServiceDiscovery();
         this.zkDiscovery.start();
@@ -89,7 +107,7 @@ public class UserApplication extends AbstractVerticle {
     }
 
     private void createCurator() {
-        curator = CuratorFrameworkFactory.newClient(ZK_HOST, new ExponentialBackoffRetry(1000, 3));
+        zkCurator = CuratorFrameworkFactory.newClient(ZK_HOST, new ExponentialBackoffRetry(1000, 3));
     }
 
     private void createServiceDiscovery() {
@@ -97,35 +115,34 @@ public class UserApplication extends AbstractVerticle {
                 new JsonInstanceSerializer<InstanceDetails>(InstanceDetails.class);
 
         this.zkDiscovery = ServiceDiscoveryBuilder.builder(InstanceDetails.class)
-                .client(this.curator)
-                .basePath("services")
+                .client(this.zkCurator)
+                .basePath(Util.zk_basePath)
                 .serializer(serializer)
                 .build();
     }
 
     private void registerService() throws Exception {
-        final ServiceInstance<InstanceDetails> instance =
-                ServiceInstance.<InstanceDetails>builder()
-                        .name("user")
+        zkServiceInstance = ServiceInstance.<InstanceDetails>builder()
+                        .name(Util.zk_usernode)
                         .payload(new InstanceDetails("1.0"))
                         .port(port)
-                        .uriSpec(getUriSpec(USER_SERVICE_PATH))
+                        .uriSpec(uriSpec)
                         .build();
 
-        zkDiscovery.registerService(instance);
+        zkDiscovery.registerService(zkServiceInstance);
     }
 
     private UriSpec getUriSpec(final String servicePath) {
-        return new UriSpec(String.format("{scheme}://%s:{port}/%s/%s%s", "127.0.0.1",
+        return new UriSpec(String.format("{scheme}://%s:{port}/%s/%s%s", host,
                 CONTEXT_PATH, APPLICATION_PATH, servicePath));
     }
 
     private void initHazelcastDiscovery() {
         // either have hazelcast.xml in classpath or pass config file using -Dhazelcast.config
         Config config = new Config();
-        HazelcastInstance instance = Hazelcast.newHazelcastInstance(config);
-        com.hazelcast.core.MultiMap<String, String> multiMap = instance.getMultiMap("user");
-        multiMap.put("service", "http://127.0.0.1:" + port + "/services/user");
+        instance = Hazelcast.newHazelcastInstance(config);
+        com.hazelcast.core.MultiMap<String, String> multiMap = instance.getMultiMap(Util.hz_userMapName);
+        multiMap.put(Util.hz_userServiceKey, uriSpec.build());
     }
 
     private void initVertxServiceDiscovery() {
@@ -133,15 +150,15 @@ public class UserApplication extends AbstractVerticle {
 
         //vertxServiceDiscovery = io.vertx.servicediscovery.ServiceDiscovery.create(vertx);
         vertxServiceDiscovery = io.vertx.servicediscovery.ServiceDiscovery.create(vertx,
-                new ServiceDiscoveryOptions().setAnnounceAddress("user-service-announce")
-                        .setName("user-name"));
+                new ServiceDiscoveryOptions().setAnnounceAddress(Util.vertx_discoveryAnnounceAddress)
+                        .setName(Util.vertx_discoveryName));
 
         // EventBusService, HttpEndpoint, MessageSource, JDBCDataSource
 
         record = new Record()
-                .setType("eventbus-service-proxy")
-                .setLocation(new JsonObject().put("endpoint", "http://127.0.0.1:" + port + "/services/user"))
-                .setName("user-service")
+                .setType(EventBusService.TYPE)
+                .setLocation(new JsonObject().put(Util.vertx_discoveryServiceKey, uriSpec.build()))
+                .setName(Util.vertx_discoveryServiceName)
                 .setMetadata(new JsonObject().put("some-label", "some-value"));
 
         vertxServiceDiscovery.publish(record, ar -> {
@@ -157,9 +174,9 @@ public class UserApplication extends AbstractVerticle {
         // Record creation from HttpEndpoint
         /*
         // http
-        record = HttpEndpoint.createRecord("user-service", "127.0.0.1", port, "/services/user");
+        record = HttpEndpoint.createRecord("user-service", host, port, "/services/user");
         // https:
-        // record = HttpEndpoint.createRecord("user-service", true, "127.0.0.1", port, "/services/user", new JsonObject().put("some-metadata", "some value"));
+        // record = HttpEndpoint.createRecord("user-service", true, host, port, "/services/user", new JsonObject().put("some-metadata", "some value"));
 
         System.out.println("initVertxServiceDiscovery record:" + record);
 
@@ -192,7 +209,7 @@ public class UserApplication extends AbstractVerticle {
     private void withdrawVertxServiceDiscovery(Record record) {
         vertxServiceDiscovery.unpublish(record.getRegistration(), ar -> {
             if (ar.succeeded()) {
-                System.out.println("Service Withdrawn failed");
+                System.out.println("Service Withdrawn Success");
             } else {
                 // cannot un-publish the service, may have already been removed, or the record is not published
             }
@@ -227,43 +244,31 @@ public class UserApplication extends AbstractVerticle {
 
 	@Override
 	public void stop(Future<Void> stopFuture) throws Exception {
-		System.out.println("Stop");
+		System.out.println("Stoping User Verticle");
 
         if (this.vertxServiceDiscovery != null) {
             withdrawVertxServiceDiscovery(this.record);
             this.vertxServiceDiscovery.close();
         }
 
-        if (this.zkDiscovery != null)
+        if (this.zkDiscovery != null) {
+            zkDiscovery.unregisterService(zkServiceInstance);
             this.zkDiscovery.close();
+        }
 
-        if (this.curator != null)
-            this.curator.close();
+        if (this.zkCurator != null)
+            this.zkCurator.close();
+
+        if (instance != null) {
+            com.hazelcast.core.MultiMap<String, String> multiMap = instance.getMultiMap(Util.hz_userMapName);
+            if (multiMap != null) {
+                multiMap.remove(Util.hz_userServiceKey, uriSpec.build());
+            }
+        }
 
         //CloseableUtils.closeQuietly(this.zkDiscovery);
-        //CloseableUtils.closeQuietly(this.curator);
+        //CloseableUtils.closeQuietly(this.zkCurator);
 
 		stopFuture.complete();
-	}
-
-	public static void main(String[] args) {
-        if (args.length == 1) {
-            port = Integer.parseInt(args[0]);
-        } else if (args.length == 2) {
-            port = Integer.parseInt(args[0]);
-            discoveryTypeStr =  args[1];
-        }
-		
-		VertxOptions options = new VertxOptions().setWorkerPoolSize(10);		
-		Vertx vertx = Vertx.vertx(options);
-
-        UserApplication userverticle = new UserApplication();
-
-		vertx.deployVerticle(userverticle, new Handler<AsyncResult<String>>() {
-			@Override
-			public void handle(AsyncResult<String> result) {
-				System.out.println("User Application deployed");
-			}
-		});
 	}
 }

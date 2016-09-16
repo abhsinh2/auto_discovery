@@ -5,6 +5,17 @@ package discovery;
  */
 public class Util {
 
+    public static final String zk_basePath = "services";
+    public static final String zk_usernode = "user";
+
+    public static final String hz_userMapName = "user";
+    public static final String hz_userServiceKey = "service";
+
+    public static final String vertx_discoveryAnnounceAddress = "user-service-announce";
+    public static final String vertx_discoveryName = "user-name";
+    public static final String vertx_discoveryServiceName = "user-service";
+    public static final String vertx_discoveryServiceKey = "endpoint";
+
     public static DiscoveryTypeEnum getDiscoveryEnum(String discoveryTypeStr) {
         DiscoveryTypeEnum discoveryType;
         if (discoveryTypeStr.equalsIgnoreCase(DiscoveryTypeEnum.ZOOKEEPER.getType())) {
